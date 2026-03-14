@@ -1,299 +1,241 @@
-function pinecone_surface(nU,nV,scaleLength,scaleWidth,exportImage)
-% PINECONE_SURFACE Generate a pinecone-inspired geometric surface in MATLAB.
+%% MathWorks_Pinecone_v2.m
+% Pinecone-Inspired Surface on a Membrane Geometry
 %
-% This function creates a smooth base surface and distributes pinecone-like
-% scale elements over it. Each scale is oriented according to the local
-% tangent frame and surface normal of the underlying geometry.
+% This script generates a pinecone-like surface by distributing oriented
+% scale elements over a smooth base surface. Each scale follows the local
+% curvature of the underlying geometry and is oriented according to the
+% local tangent frame.
 %
-% Inputs (all optional):
-%   nU           - number of scale columns
-%   nV           - number of scale rows
-%   scaleLength  - scale length
-%   scaleWidth   - scale width
-%   exportImage  - true/false to export PNG image
-%
-% Example:
-%   pinecone_surface
-%   pinecone_surface(22,18,0.18,0.10,true)
+% The goal of the experiment is to explore nature-inspired surface tiling
+% using MATLAB geometry processing and visualization tools.
 %
 % Author: Gianluigi Riccardi
 % Year: 2026
+% -------------------------------------------------------------------------
+% MAIN PARAMETERS (user-tunable)
+% -------------------------------------------------------------------------
 
-    if nargin < 1 || isempty(nU), nU = 22; end
-    if nargin < 2 || isempty(nV), nV = 18; end
-    if nargin < 3 || isempty(scaleLength), scaleLength = 0.18; end
-    if nargin < 4 || isempty(scaleWidth), scaleWidth = 0.10; end
-    if nargin < 5 || isempty(exportImage), exportImage = true; end
+close all; clc;
 
-    close all; clc;
+nU       = 22;      % number of scales along U direction
+nV       = 28;      % number of scales along V direction
+vps      = 13;      % vertices per scale (lateral resolution)
+vpr      = 20;      % vertices per scale (depth resolution)
 
-    % ------------------------------------------------------------
-    % BASE SURFACE GRID
-    % ------------------------------------------------------------
-    NuSurf = 220;
-    NvSurf = 180;
+lift_max = 0.22;    % maximum scale opening
+lift_min = 0.06;    % minimum scale opening
 
-    u = linspace(-1.2, 1.2, NuSurf);
-    v = linspace(-1.0, 1.0, NvSurf);
-    [U,V] = meshgrid(u,v);
+scale_w  = 0.055;   % half width of scale in tangent plane
+scale_d  = 0.072;   % root-to-tip scale depth
+tilt_deg = 28;      % scale tilt angle (degrees)
 
-    % Smooth membrane-like base surface
-    Z = 0.45*exp(-0.9*(U.^2 + 1.3*V.^2)) ...
-      + 0.10*sin(2.4*pi*U).*cos(1.6*pi*V) ...
-      - 0.06*(U.^2) ...
-      - 0.03*(V.^2);
+% -------------------------------------------------------------------------
+% 1. BASE SURFACE (MathWorks membrane example)
+% -------------------------------------------------------------------------
 
-    % Slight smoothing for visual cleanliness
-    Z = localSmooth2D(Z);
-
-    % ------------------------------------------------------------
-    % LOCAL DIFFERENTIAL GEOMETRY
-    % ------------------------------------------------------------
-    du = u(2) - u(1);
-    dv = v(2) - v(1);
-
-    [Zu,Zv] = gradient(Z,du,dv);
-
-    % Normal field N = normalize([-dZ/du, -dZ/dv, 1])
-    Nx = -Zu;
-    Ny = -Zv;
-    Nz = ones(size(Z));
-    Nnorm = sqrt(Nx.^2 + Ny.^2 + Nz.^2);
-    Nx = Nx ./ Nnorm;
-    Ny = Ny ./ Nnorm;
-    Nz = Nz ./ Nnorm;
-
-    % Tangent directions
-    Tu = cat(3, ones(size(Z)), zeros(size(Z)), Zu);
-    Tv = cat(3, zeros(size(Z)), ones(size(Z)), Zv);
-
-    Tu = normalizeField(Tu);
-    Tv = normalizeField(Tv);
-
-    % Curvature-like heuristic from Laplacian magnitude
-    [Zuu,~] = gradient(Zu,du,dv);
-    [~,Zvv] = gradient(Zv,du,dv);
-    curvatureProxy = abs(Zuu + Zvv);
-    curvatureProxy = curvatureProxy ./ max(curvatureProxy(:) + eps);
-
-    % ------------------------------------------------------------
-    % FIGURE SETUP
-    % ------------------------------------------------------------
-    fig = figure('Color','w','Name','Pinecone Surface in MATLAB');
-    ax = axes('Parent',fig);
-    hold(ax,'on');
-    axis(ax,'equal');
-    axis(ax,'off');
-    view(ax,34,28);
-    camlight(ax,'headlight');
-    camlight(ax,'right');
-    lighting(ax,'gouraud');
-    material(ax,[0.45 0.7 0.25]);
-
-    % Base surface
-    surf(ax,U,V,Z, ...
-        'EdgeColor','none', ...
-        'FaceColor',[0.77 0.63 0.43], ...
-        'FaceAlpha',0.92);
-
-    % ------------------------------------------------------------
-    % SCALE DISTRIBUTION
-    % ------------------------------------------------------------
-    uCenters = linspace(-0.95,0.95,nU);
-    vCenters = linspace(-0.82,0.82,nV);
-
-    % Alternate offset for more organic arrangement
-    for j = 1:nV
-        for i = 1:nU
-
-            uu = uCenters(i);
-            vv = vCenters(j);
-
-            if mod(j,2) == 0
-                uu = uu + 0.5*(uCenters(min(2,end)) - uCenters(1));
-            end
-
-            if uu < min(u) || uu > max(u) || vv < min(v) || vv > max(v)
-                continue;
-            end
-
-            % Interpolate position
-            zc = interp2(U,V,Z,uu,vv,'linear',NaN);
-            if isnan(zc)
-                continue;
-            end
-
-            % Interpolate normal and tangents
-            n = [
-                interp2(U,V,Nx,uu,vv,'linear',NaN)
-                interp2(U,V,Ny,uu,vv,'linear',NaN)
-                interp2(U,V,Nz,uu,vv,'linear',NaN)
-            ];
-
-            tu = [
-                interp2(U,V,Tu(:,:,1),uu,vv,'linear',NaN)
-                interp2(U,V,Tu(:,:,2),uu,vv,'linear',NaN)
-                interp2(U,V,Tu(:,:,3),uu,vv,'linear',NaN)
-            ];
-
-            tv = [
-                interp2(U,V,Tv(:,:,1),uu,vv,'linear',NaN)
-                interp2(U,V,Tv(:,:,2),uu,vv,'linear',NaN)
-                interp2(U,V,Tv(:,:,3),uu,vv,'linear',NaN)
-            ];
-
-            cval = interp2(U,V,curvatureProxy,uu,vv,'linear',NaN);
-
-            if any(isnan([n;tu;tv;cval]))
-                continue;
-            end
-
-            n  = normalizeVec(n);
-            tu = normalizeVec(tu);
-            tv = normalizeVec(tv);
-
-            % Make tangents orthogonal to normal
-            tu = normalizeVec(tu - dot(tu,n)*n);
-            tv = normalizeVec(cross(n,tu));
-
-            % Opening angle increases with curvature heuristic
-            openAngle = deg2rad(10 + 38*cval);
-
-            % Slight size modulation
-            localLength = scaleLength * (0.90 + 0.25*cval);
-            localWidth  = scaleWidth  * (0.92 + 0.18*(1-cval));
-
-            % Organic azimuth bias
-            azBias = 0.12*sin(3.1*uu + 1.7*vv);
-            tuRot = cos(azBias)*tu + sin(azBias)*tv;
-            tvRot = -sin(azBias)*tu + cos(azBias)*tv;
-
-            % Create one scale patch
-            [Xs,Ys,Zs] = makeScalePatch( ...
-                [uu;vv;zc], ...
-                tuRot, tvRot, n, ...
-                localLength, localWidth, openAngle);
-
-            % Brownish tone variation
-            baseColor = [0.43 0.28 0.14];
-            lightGain = 0.15 + 0.30*cval;
-            faceColor = min(baseColor + lightGain*[0.55 0.40 0.18], 1);
-
-            surf(ax,Xs,Ys,Zs, ...
-                'EdgeColor','none', ...
-                'FaceColor',faceColor, ...
-                'FaceLighting','gouraud', ...
-                'AmbientStrength',0.42, ...
-                'DiffuseStrength',0.75, ...
-                'SpecularStrength',0.08);
-        end
-    end
-
-    % ------------------------------------------------------------
-    % FINAL LOOK
-    % ------------------------------------------------------------
-    title(ax,'Pinecone-Inspired Surface in MATLAB', ...
-        'FontWeight','bold', ...
-        'FontSize',16, ...
-        'Color',[0.18 0.12 0.08]);
-
-    colormap(ax,brownMap(256));
-
-    xlim(ax,[min(u) max(u)]);
-    ylim(ax,[min(v) max(v)]);
-    zlim(ax,[min(Z(:))-0.1, max(Z(:))+0.45]);
-
-    set(fig,'Renderer','opengl');
-
-    % ------------------------------------------------------------
-    % EXPORT
-    % ------------------------------------------------------------
-    if exportImage
-        drawnow;
-        exportgraphics(fig,'pinecone_surface_example.png','Resolution',300);
-        fprintf('Image exported: pinecone_surface_example.png\n');
-    end
+try
+    Zraw = membrane(1,48);
+catch
+    % fallback surface if membrane is unavailable
+    Zraw = peaks(97);
 end
 
-% ========================================================================
-% LOCAL FUNCTIONS
-% ========================================================================
+Ng   = size(Zraw,1);
 
-function A = localSmooth2D(A)
-    K = [1 2 1; 2 4 2; 1 2 1] / 16;
-    A = conv2(A,K,'same');
+ulin = linspace(-1,1,Ng);
+vlin = linspace(-1,1,Ng);
+
+[Ug,Vg] = meshgrid(ulin,vlin); %#ok<ASGLU>
+
+% normalize surface height
+Zraw = Zraw / max(abs(Zraw(:)));
+
+% smooth surface slightly
+Zg = imgaussfilt(Zraw,1.2);
+
+% -------------------------------------------------------------------------
+% 2. SURFACE GRADIENT AND NORMAL ESTIMATION
+% -------------------------------------------------------------------------
+
+[dZdu,dZdv] = gradient(Zg,ulin,vlin);
+
+F_Z    = griddedInterpolant({vlin,ulin},Zg,'cubic','none');
+F_dZdu = griddedInterpolant({vlin,ulin},dZdu,'cubic','none');
+F_dZdv = griddedInterpolant({vlin,ulin},dZdv,'cubic','none');
+
+% -------------------------------------------------------------------------
+% 3. SCALE ROOT GRID
+% -------------------------------------------------------------------------
+
+u_roots = linspace(-0.92,0.92,nU);
+v_roots = linspace(-0.92,0.92,nV);
+
+[Ur,Vr] = meshgrid(u_roots,v_roots);
+
+Ur = Ur(:);
+Vr = Vr(:);
+
+Zr    = F_Z(Vr,Ur);
+dZr_u = F_dZdu(Vr,Ur);
+dZr_v = F_dZdv(Vr,Ur);
+
+valid = ~isnan(Zr);
+
+Ur      = Ur(valid);
+Vr      = Vr(valid);
+Zr      = Zr(valid);
+dZr_u   = dZr_u(valid);
+dZr_v   = dZr_v(valid);
+
+nscales = numel(Ur);
+
+% -------------------------------------------------------------------------
+% 4. LOCAL TANGENT FRAME FOR EACH SCALE
+% -------------------------------------------------------------------------
+
+Tu = [ones(nscales,1) zeros(nscales,1) dZr_u];
+Tv = [zeros(nscales,1) ones(nscales,1) dZr_v];
+
+Tu = Tu ./ (sqrt(sum(Tu.^2,2)) + 1e-9);
+Tv = Tv ./ (sqrt(sum(Tv.^2,2)) + 1e-9);
+
+Nrm = cross(Tu,Tv,2);
+Nrm = Nrm ./ (sqrt(sum(Nrm.^2,2)) + 1e-9);
+
+% ensure upward normal orientation
+flip_idx = Nrm(:,3) < 0;
+Nrm(flip_idx,:) = -Nrm(flip_idx,:);
+
+% recompute orthogonal tangent
+Tv = cross(Nrm,Tu,2);
+Tv = Tv ./ (sqrt(sum(Tv.^2,2)) + 1e-9);
+
+% -------------------------------------------------------------------------
+% 5. LOCAL CURVATURE ESTIMATION
+% -------------------------------------------------------------------------
+
+[d2Zdu2,~]  = gradient(dZdu,ulin,vlin);
+[~,d2Zdv2]  = gradient(dZdv,ulin,vlin);
+
+F_kuu = griddedInterpolant({vlin,ulin},d2Zdu2,'linear','none');
+F_kvv = griddedInterpolant({vlin,ulin},d2Zdv2,'linear','none');
+
+kuu = F_kuu(Vr,Ur);
+kvv = F_kvv(Vr,Ur);
+
+curv_mag  = min(abs(kuu) + abs(kvv),5);
+curv_norm = curv_mag / (max(curv_mag) + 1e-6);
+
+% curvature-based scale opening
+lift_val = lift_min + (lift_max - lift_min) * (1 - curv_norm);
+
+% -------------------------------------------------------------------------
+% 6. SCALE GEOMETRY CONSTRUCTION
+% -------------------------------------------------------------------------
+
+s_lat = linspace(-1,1,vps);
+s_dep = linspace(0,1,vpr)';
+
+lat_profile = 1 - s_lat.^2;
+
+tilt_rad = deg2rad(tilt_deg);
+
+all_X = zeros(vpr,vps*nscales);
+all_Y = zeros(vpr,vps*nscales);
+all_Z = zeros(vpr,vps*nscales);
+all_C = zeros(vpr,vps*nscales);
+
+for k = 1:nscales
+
+    cidx = (k-1)*vps + (1:vps);
+
+    tu = Tu(k,:);
+    tv = Tv(k,:);
+    n  = Nrm(k,:);
+
+    sl = lift_val(k);
+
+    open_dir = n*cos(tilt_rad) + tv*sin(tilt_rad);
+    open_dir = open_dir/(norm(open_dir)+1e-9);
+
+    lat_world  = scale_w .* s_lat;
+    dep_world  = scale_d .* s_dep;
+    lift_world = sl .* (s_dep.^1.5) .* lat_profile;
+
+    Xk = Ur(k) + tu(1).*lat_world + tv(1).*dep_world + open_dir(1).*lift_world;
+    Yk = Vr(k) + tu(2).*lat_world + tv(2).*dep_world + open_dir(2).*lift_world;
+    Zk = Zr(k) + tu(3).*lat_world + tv(3).*dep_world + open_dir(3).*lift_world;
+
+    all_X(:,cidx) = Xk;
+    all_Y(:,cidx) = Yk;
+    all_Z(:,cidx) = Zk;
+
+    height_c = (Zr(k)+1)/2;
+    depth_c  = s_dep .* ones(1,vps);
+
+    all_C(:,cidx) = 0.4*depth_c + 0.6*height_c;
+
 end
 
-function F = normalizeField(F)
-    nrm = sqrt(F(:,:,1).^2 + F(:,:,2).^2 + F(:,:,3).^2) + eps;
-    F(:,:,1) = F(:,:,1) ./ nrm;
-    F(:,:,2) = F(:,:,2) ./ nrm;
-    F(:,:,3) = F(:,:,3) ./ nrm;
-end
+% -------------------------------------------------------------------------
+% 7. RENDERING
+% -------------------------------------------------------------------------
 
-function v = normalizeVec(v)
-    v = v(:);
-    n = norm(v);
-    if n < eps
-        v = [0;0;1];
-    else
-        v = v / n;
-    end
-end
+fig = figure('Color',[0.05 0.02 0], ...
+             'Units','normalized', ...
+             'Position',[0.08 0.05 0.55 0.85], ...
+             'Name','MathWorks Pinecone v2');
 
-function [X,Y,Z] = makeScalePatch(center,tu,tv,n,L,W,openAngle)
-    % Local scale coordinates
-    ns = 18;
-    nt = 10;
+surface(all_X,all_Y,all_Z,all_C,'EdgeColor','none');
+shading interp
 
-    s = linspace(0,1,ns);
-    t = linspace(-1,1,nt);
-    [S,T] = meshgrid(s,t);
+% pinecone-style brown colormap
+stops_hex = ["#1A0D00"
+             "#3B1F00"
+             "#5A2E0C"
+             "#7A3F14"
+             "#9A5526"
+             "#C48A55"];
 
-    % Planform: narrow tip, wider root
-    widthProfile = W * (0.12 + 0.88*(1 - S).^0.85);
-    Xl = T .* widthProfile;
-    Yl = -L * S;
+stops_rgb = validatecolor(stops_hex,'multiple');
+cmap = interp1(linspace(1,256,6),stops_rgb,1:256);
 
-    % Curvature / opening shape
-    arch = 0.10*L*(1 - (T).^2).*(1 - 0.2*S);
-    lift = (sin(openAngle)) * (0.55*L) .* (S.^1.4) .* (1 - 0.15*T.^2);
-    Zl = arch + lift;
+colormap(cmap)
+clim([0.05 0.95])
 
-    % Slight longitudinal camber
-    Yl = Yl + 0.08*L*(T.^2).*(S.^1.1);
+material([0.35 0.85 0.55 25 0.25])
 
-    % Local basis: tv = width direction, tu = length direction
-    P = center(:)' ...
-      + Xl(:)*tv(:)' ...
-      + Yl(:)*tu(:)' ...
-      + Zl(:)*n(:)';
+lighting gouraud
 
-    X = reshape(P(:,1),size(Xl));
-    Y = reshape(P(:,2),size(Xl));
-    Z = reshape(P(:,3),size(Xl));
-end
+light('Position',[ 1.8  1.2  2.5],'Style','infinite','Color',[1.00 0.88 0.60])
+light('Position',[-2.0 -0.8  1.5],'Style','infinite','Color',[0.20 0.18 0.30])
+light('Position',[ 0.3  0.5 -1.8],'Style','infinite','Color',[0.10 0.08 0.04])
 
-function cmap = brownMap(m)
-    if nargin < 1
-        m = 256;
-    end
+% -------------------------------------------------------------------------
+% 8. VIEW SETTINGS
+% -------------------------------------------------------------------------
 
-    anchors = [
-        0.14 0.08 0.04
-        0.24 0.15 0.07
-        0.36 0.23 0.11
-        0.52 0.35 0.17
-        0.66 0.50 0.27
-        0.80 0.67 0.44
-    ];
+ax = gca;
 
-    x = linspace(0,1,size(anchors,1));
-    xi = linspace(0,1,m);
+set(ax,'DataAspectRatio',[1 1 1], ...
+       'Color',[0.05 0.02 0], ...
+       'Position',[0.02 0.02 0.96 0.94], ...
+       'Clipping','off')
 
-    cmap = zeros(m,3);
-    for k = 1:3
-        cmap(:,k) = interp1(x,anchors(:,k),xi,'pchip');
-    end
-    cmap = max(0,min(1,cmap));
-end
+axis off
+axis([-1.15 1.15 -1.15 1.15 -1.3 1.5])
+
+view(-37.5,30)
+camzoom(1.15)
+
+% -------------------------------------------------------------------------
+% 9. EXPORT IMAGE
+% -------------------------------------------------------------------------
+
+out_path = fullfile(fileparts(mfilename('fullpath')),'MathWorks_Pinecone_v2.png');
+
+exportgraphics(fig,out_path, ...
+               'Resolution',300, ...
+               'BackgroundColor',[0.05 0.02 0])
+
+fprintf('Export completed: %s\n',out_path);
